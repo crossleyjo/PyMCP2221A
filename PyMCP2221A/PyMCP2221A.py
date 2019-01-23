@@ -8,12 +8,22 @@ import hid
 # pip install hidapi
 # https://github.com/trezor/cython-hidapi
 import time
+from sys import exit
+import pdb
 
 
 class PyMCP2221A:
-    def __init__(self,VID = 0x04D8,PID = 0x00DD,devnum = 0):
+    def __init__(self,VID = 0x04D8,PID = 0x00DD, devnum = 0, i2c_speed=400000):
+        """
+        VID - 16 bit int - USB vendor ID
+        PID - 16 bit int - USB product ID
+        devnum - int - device number (if more than one MCP2221A are plugged in)
+        i2c_speed - int - target speed (in Hz) for I2C communication
+        """
         self.mcp2221a = hid.device()
+        self.i2c_speed = i2c_speed
         self.mcp2221a.open_path(hid.enumerate(0x04D8, 0x00DD)[devnum]["path"])
+        self.I2C_Init()             # use self.i2c_speed by default
         self.CLKDUTY_0 = 0x00
         self.CLKDUTY_25 = 0x08
         self.CLKDUTY_50 = 0x10
@@ -39,14 +49,19 @@ class PyMCP2221A:
 # Command Structure
 #######################################################################
     def Command_Structure(self, I2C_Cancel_Bit, I2C_Speed_SetUp_Bit, I2C_Speed_SetVal_Byte):
+        """
+        STATUS/SET PARAMETERS
+        """
         I2C_Cancel_Bit = 0
         I2C_Speed_SetUp_Bit = 0
         I2C_Speed_SetVal_Byte = 0
         buf = [0x00, 0x10, 0x00, I2C_Cancel_Bit << 4, I2C_Speed_SetUp_Bit << 5, I2C_Speed_SetVal_Byte]
         buf = buf + [0 for i in range(65 - len(buf))]
         self.mcp2221a.write(buf)
+        print(buf,len(buf))
         buf = self.mcp2221a.read(65)
-
+        print(buf,len(buf))
+        print("-----------")
         print (chr(buf[46]))
         print (chr(buf[47]))
         print (chr(buf[48]))
@@ -451,8 +466,9 @@ class PyMCP2221A:
 #######################################################################
 # I2C Init
 #######################################################################
-    def I2C_Init(self, speed=100000):  # speed = 100000
-
+    def I2C_Init(self, speed=None):  # speed = 100000
+        if speed == None :
+            speed = self.i2c_speed
         buf = [0x00, 0x10]
         buf = buf + [0 for i in range(65 - len(buf))]
         buf[2 + 1] = 0x00  # Cancel current I2C/SMBus transfer (sub-command)
@@ -461,6 +477,7 @@ class PyMCP2221A:
         buf[4 + 1] = int((12000000 / speed) - 3)
         self.mcp2221a.write(buf)
         rbuf = self.mcp2221a.read(65)
+        print("I2C clock is set to approximately %s kHz"%(12e3/rbuf[14]))
         # print("Init")
         if(rbuf[22] == 0):
             print("SCL is low.")
@@ -538,7 +555,9 @@ class PyMCP2221A:
             buf[4 + 1 + i] = data[i]  # The I2C/SMBus system clock divider that will be used to establish the communication speed
         self.mcp2221a.write(buf)
         rbuf = self.mcp2221a.read(65)
-        time.sleep(0.008)
+        # print(rbuf[0:5])
+        # pdb.set_trace()
+        # time.sleep(0.008)
 
 
 #######################################################################
